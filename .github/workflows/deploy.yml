@@ -32,7 +32,7 @@ jobs:
   # Deliberately disabled: DeepSpace 0.44.2 requires a long-lived personal session in CI.
   # Owner approval and a protected production environment are required before enabling.
   deploy:
-    if: false
+    if: ${{ false }}
     needs: release-checks
     runs-on: ubuntu-latest
     environment: production
