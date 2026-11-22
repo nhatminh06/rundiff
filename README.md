@@ -29,6 +29,8 @@ The scaffold also provides `npm run screenshot`; inspect `npx deepspace test scr
 
 ## Architecture
 
+![RunDiff architecture showing the browser analysis pipeline, DeepSpace persistence, realtime permissions, and release checks](architecture.png)
+
 RunDiff keeps calculation and parsing logic independent of the UI:
 
 - `src/lib/benchmark-csv.ts` parses and validates local CSV input.
