@@ -2,6 +2,7 @@ export type WorkloadStatus = 'regression' | 'investigation' | 'no-clear-regressi
 export interface ConfidenceInterval { lower: number; upper: number }
 export interface AnalysisOptions { threshold?: number; seed?: number; iterations?: number; minimumSamples?: number }
 export interface WorkloadAnalysis { baselineMedian: number | null; candidateMedian: number | null; baselineP95: number | null; candidateP95: number | null; change: number | null; confidenceInterval: ConfidenceInterval | null; status: WorkloadStatus; warning: string | null }
+export type StatisticalEvidence = Omit<WorkloadAnalysis, 'status'>
 
 export function median(measurements: readonly number[]): number | null {
   if (!validMeasurements(measurements)) return null
@@ -31,8 +32,7 @@ export function bootstrapMedianChange(baseline: readonly number[], candidate: re
   return { lower: interpolatedQuantile(changes, 0.025), upper: interpolatedQuantile(changes, 0.975) }
 }
 
-export function analyzeWorkload(baseline: readonly number[], candidate: readonly number[], options: AnalysisOptions = {}): WorkloadAnalysis {
-  const threshold = options.threshold ?? 5
+export function analyzeEvidence(baseline: readonly number[], candidate: readonly number[], options: AnalysisOptions = {}): StatisticalEvidence {
   const minimumSamples = options.minimumSamples ?? 5
   const baselineMedian = median(baseline)
   const candidateMedian = median(candidate)
@@ -41,8 +41,15 @@ export function analyzeWorkload(baseline: readonly number[], candidate: readonly
   const change = percentageChange(baselineMedian, candidateMedian)
   const insufficient = baseline.length < minimumSamples || candidate.length < minimumSamples || change === null
   const confidenceInterval = insufficient ? null : bootstrapMedianChange(baseline, candidate, options)
-  const status = classifyChange(change, confidenceInterval, threshold, insufficient)
-  return { baselineMedian, candidateMedian, baselineP95, candidateP95, change, confidenceInterval, status, warning: insufficient ? `At least ${minimumSamples} valid samples per variant are required for bootstrap analysis.` : null }
+  return { baselineMedian, candidateMedian, baselineP95, candidateP95, change, confidenceInterval, warning: insufficient ? `At least ${minimumSamples} valid samples per variant are required for bootstrap analysis.` : null }
+}
+
+export function classifyEvidence(evidence: StatisticalEvidence, threshold = 5): WorkloadAnalysis {
+  return { ...evidence, status: classifyChange(evidence.change, evidence.confidenceInterval, threshold, evidence.warning !== null) }
+}
+
+export function analyzeWorkload(baseline: readonly number[], candidate: readonly number[], options: AnalysisOptions = {}): WorkloadAnalysis {
+  return classifyEvidence(analyzeEvidence(baseline, candidate, options), options.threshold)
 }
 
 export function classifyChange(change: number | null, interval: ConfidenceInterval | null, threshold = 5, insufficient = false): WorkloadStatus {

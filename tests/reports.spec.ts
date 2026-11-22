@@ -1,4 +1,5 @@
 import { expect, test } from 'deepspace/testing'
+import { readFile } from 'node:fs/promises'
 
 test('owner shares a private report read-only and revocation is realtime', async ({ users }) => {
   const [owner, other] = await users(2)
@@ -49,6 +50,13 @@ test('owner shares a private report read-only and revocation is realtime', async
     await expect(other.page.getByRole('button', { name: 'Save changes' })).toHaveCount(0)
     await expect(other.page.getByRole('button', { name: 'Delete' })).toHaveCount(0)
 
+    const reviewerDownloadPromise = other.page.waitForEvent('download')
+    await other.page.getByRole('button', { name: 'Export CSV' }).click()
+    const reviewerDownload = await reviewerDownloadPromise
+    const reviewerCsv = await readFile(await reviewerDownload.path(), 'utf8')
+    expect(reviewerCsv).toContain('Small GEMM,7,7,')
+    expect(reviewerCsv).toContain(',7,regression')
+
     await other.page.goto(`/reports?testRecordId=${encodeURIComponent(reportId!)}`)
     await other.page.getByRole('button', { name: 'Probe update' }).click()
     await expect(other.page.getByTestId('mutation-probe-result')).toContainText('rejected')
@@ -74,6 +82,7 @@ test('owner shares a private report read-only and revocation is realtime', async
     await expect(owner.page.getByText('Reviewer removed')).toBeVisible()
     await expect(other.page.getByText(updatedTitle)).toHaveCount(0)
     await expect(other.page.getByText('No saved reports')).toBeVisible()
+    await expect(other.page.getByRole('button', { name: 'Export CSV' })).toHaveCount(0)
     await other.page.reload()
     await expect(other.page.getByText(updatedTitle)).toHaveCount(0)
     await expect(other.page.getByText('No saved reports')).toBeVisible()

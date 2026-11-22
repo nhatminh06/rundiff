@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test'
+import { readFile } from 'node:fs/promises'
 import { captureConsoleErrors } from './helpers/errors'
 
 /**
@@ -61,6 +62,81 @@ test.describe('Smoke tests', () => {
     await page.goto('/home')
     await expect(page.getByTestId('nav-sign-in-button')).toBeVisible({ timeout: 15000 })
     await expect(page.getByTestId('nav-user-name')).toHaveCount(0)
+  })
+
+  test('thresholds reuse evidence while datasets and same-name imports use fresh samples', async ({ page }) => {
+    await page.addInitScript(() => {
+      const NativeWorker = window.Worker
+      Object.assign(window, { __workerStarts: 0 })
+      window.Worker = class extends NativeWorker {
+        constructor(url: string | URL, options?: WorkerOptions) {
+          super(url, options)
+          Object.assign(window, { __workerStarts: (window as Window & { __workerStarts: number }).__workerStarts + 1 })
+        }
+      }
+    })
+    const count = () => page.evaluate(() => (window as Window & { __workerStarts: number }).__workerStarts)
+    await page.goto('/home')
+    await expect(page.getByRole('heading', { name: 'Median latency' })).toBeVisible()
+    const initial = await count()
+    await page.getByLabel('Regression threshold').focus()
+    await page.keyboard.press('ArrowRight')
+    await expect(page.locator('output[for="threshold"]')).toHaveText('6%')
+    expect(await count()).toBe(initial)
+
+    await page.getByLabel('Dataset').click()
+    await page.getByRole('option', { name: 'Runtime refactor · v0.9 → next' }).click()
+    await expect.poll(count).toBeGreaterThan(initial)
+    const afterSwitch = await count()
+    await page.getByLabel('Dataset').click()
+    await page.getByRole('option', { name: 'Compiler optimization · main → PR #284' }).click()
+    expect(await count()).toBe(afterSwitch)
+
+    const input = page.locator('input[type="file"]')
+    const csv = (candidate: number) => `workload,variant,latency_ms\ngemm,baseline,2\ngemm,candidate,${candidate}\n`
+    await input.setInputFiles({ name: 'same.csv', mimeType: 'text/csv', buffer: Buffer.from(csv(2.2)) })
+    await expect(page.getByRole('heading', { name: 'gemm', exact: true })).toBeVisible()
+    await expect(page.getByText('+10.0%', { exact: true }).first()).toBeVisible()
+    const firstImport = await count()
+    await input.setInputFiles({ name: 'same.csv', mimeType: 'text/csv', buffer: Buffer.from(csv(3)) })
+    await expect(page.getByText('+50.0%', { exact: true }).first()).toBeVisible()
+    expect(await count()).toBeGreaterThan(firstImport)
+  })
+
+  test('dashboard export includes all workloads despite the status filter', async ({ page }) => {
+    await page.goto('/home')
+    await expect(page.getByRole('button', { name: 'Export CSV' })).toBeEnabled()
+    await page.getByLabel('Status filter').click()
+    await page.getByRole('option', { name: 'Regression', exact: true }).click()
+    const downloadPromise = page.waitForEvent('download')
+    await page.getByRole('button', { name: 'Export CSV' }).click()
+    const download = await downloadPromise
+    const csv = await readFile(await download.path(), 'utf8')
+    expect(download.suggestedFilename()).toMatch(/-analysis\.csv$/)
+    expect(csv).toContain('Small GEMM,7,7,')
+    expect(csv).toContain('Medium GEMM,7,7,')
+    expect(csv).toContain('Conv2D,7,7,')
+    expect(csv).toContain(',5,regression')
+  })
+
+  test('analysis worker startup failure offers a retry', async ({ page }) => {
+    await page.addInitScript(() => {
+      const NativeWorker = window.Worker
+      let failed = false
+      window.Worker = class extends NativeWorker {
+        constructor(url: string | URL, options?: WorkerOptions) {
+          if (!failed && String(url).includes('benchmark-worker')) {
+            failed = true
+            throw new Error('worker unavailable')
+          }
+          super(url, options)
+        }
+      }
+    })
+    await page.goto('/home')
+    await expect(page.getByRole('alert')).toContainText('Could not start benchmark analysis')
+    await page.getByRole('button', { name: 'Retry analysis' }).click()
+    await expect(page.getByRole('heading', { name: 'Median latency' })).toBeVisible()
   })
 
   test('unknown route shows 404', async ({ page }) => {

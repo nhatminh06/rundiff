@@ -1,10 +1,12 @@
 import { useMemo, useRef, useState, type ChangeEvent } from 'react'
-import { Activity, AlertTriangle, ArrowUp, CircleHelp, FileUp, Minus, Save, SlidersHorizontal } from 'lucide-react'
+import { Activity, AlertTriangle, ArrowUp, CircleHelp, Download, FileUp, Minus, Save, SlidersHorizontal } from 'lucide-react'
 import { AuthOverlay, useAuth, useMutations, useRecordContext } from 'deepspace'
 import { Badge, Button, Input, Label, Modal, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Textarea, useToast } from '@/components/ui'
 import { demoDatasets, type DemoDataset, type DemoWorkload } from '@/data/benchmarks'
 import { CSV_LIMITS, importBenchmarkCsv } from '@/lib/benchmark-csv'
-import { analyzeWorkload, type ConfidenceInterval, type WorkloadStatus } from '@/lib/benchmark-stats'
+import { analysisFilename, downloadAnalysisCsv, serializeAnalysisCsv } from '@/lib/analysis-export'
+import { classifyEvidence, type ConfidenceInterval, type WorkloadStatus } from '@/lib/benchmark-stats'
+import { useBenchmarkEvidence } from '@/lib/use-benchmark-evidence'
 import { reportFromDataset, reportSaveError, type ReportData } from '@/lib/reports'
 
 type StatusFilter = 'all' | WorkloadStatus
@@ -36,9 +38,8 @@ export default function HomePage() {
   const fileInput = useRef<HTMLInputElement>(null)
   const datasets = [...demoDatasets, ...imported]
   const dataset = datasets.find((item) => item.id === datasetId) ?? demoDatasets[0]
-  const rows: Row[] = useMemo(() => dataset.workloads.map((workload) => {
-    return { ...workload, ...analyzeWorkload(workload.baseline, workload.candidate, { threshold, seed: 2027, iterations: 2000 }) }
-  }), [dataset, threshold])
+  const { evidence, error: analysisError, retry: retryAnalysis } = useBenchmarkEvidence(dataset.workloads)
+  const rows: Row[] = useMemo(() => evidence?.map((item, index) => ({ ...dataset.workloads[index], ...classifyEvidence(item, threshold) })) ?? [], [dataset, evidence, threshold])
   const visibleRows = rows.filter((row) => filter === 'all' || row.status === filter)
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0]
   const regressions = rows.filter((row) => row.status === 'regression').length
@@ -81,6 +82,12 @@ export default function HomePage() {
     finally { setSaving(false) }
   }
 
+  function exportAnalysis() {
+    if (!evidence) return
+    try { downloadAnalysisCsv(serializeAnalysisCsv(dataset.workloads, evidence, threshold), analysisFilename(dataset.name)) }
+    catch (error) { toast.error('Export failed', error instanceof Error ? error.message : 'Could not export this analysis.') }
+  }
+
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <header className="mb-6 flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
@@ -91,12 +98,13 @@ export default function HomePage() {
         </div>
         <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto">
           <div className="min-w-0 sm:w-[360px]"><label className="mb-1.5 block text-xs font-medium text-muted-foreground" htmlFor="dataset-select">Dataset</label><Select value={datasetId} onValueChange={changeDataset}><SelectTrigger id="dataset-select"><SelectValue /></SelectTrigger><SelectContent>{datasets.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></div>
-          <div className="flex gap-2 sm:self-end"><input ref={fileInput} className="sr-only" type="file" accept=".csv,text/csv" onChange={importCsv} /><Button variant="outline" onClick={() => fileInput.current?.click()}><FileUp />Import CSV</Button><Button onClick={beginSave} disabled={Boolean(saveLimitError) || (auth.isSignedIn && (room.status !== 'connected' || !reports.ready))} title={saveLimitError ?? undefined}><Save />Save</Button></div>
+          <div className="flex flex-wrap gap-2 sm:self-end"><input ref={fileInput} className="sr-only" type="file" accept=".csv,text/csv" onChange={importCsv} /><Button variant="outline" onClick={() => fileInput.current?.click()}><FileUp />Import CSV</Button><Button variant="outline" onClick={exportAnalysis} disabled={!evidence}><Download />Export CSV</Button><Button onClick={beginSave} disabled={Boolean(saveLimitError) || (auth.isSignedIn && (room.status !== 'connected' || !reports.ready))} title={saveLimitError ?? undefined}><Save />Save</Button></div>
         </div>
       </header>
       {saveLimitError && <div className="mb-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm text-warning">{saveLimitError}</div>}
       {importError && <div role="alert" className="mb-4 flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm"><AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" /><div><strong>CSV import failed</strong><p className="mt-0.5 text-muted-foreground">{importError}</p><p className="mt-1 text-xs text-muted-foreground">Expected workload,variant,latency_ms · max {CSV_LIMITS.maxBytes.toLocaleString()} bytes and {CSV_LIMITS.maxRows.toLocaleString()} rows.</p></div></div>}
 
+      {analysisError && <div role="alert" className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm">{analysisError} <Button variant="outline" size="sm" onClick={retryAnalysis}>Retry analysis</Button></div>}
       <section aria-label="Comparison summary" className="mb-6 grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
         <Summary label="Baseline" value={dataset.baselineLabel} detail={dataset.context} />
         <Summary label="Candidate" value={dataset.candidateLabel} detail={`${rows.length} workloads`} />
@@ -112,10 +120,11 @@ export default function HomePage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,.75fr)]">
+      {!evidence && !analysisError && <div role="status" className="mb-4 rounded-lg border border-border bg-card p-4 text-sm text-muted-foreground">Analyzing benchmark samples…</div>}
+      {evidence && <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_minmax(320px,.75fr)]">
         <div className="min-w-0 space-y-6"><LatencyChart rows={visibleRows} selectedId={selected.id} onSelect={setSelectedId} /><BenchmarkTable rows={visibleRows} selectedId={selected.id} onSelect={setSelectedId} /></div>
         <WorkloadDetail workload={selected} baselineLabel={dataset.baselineLabel} candidateLabel={dataset.candidateLabel} threshold={threshold} />
-      </div>
+      </div>}
       {authOpen && <AuthOverlay onClose={() => setAuthOpen(false)} title="Sign in to save reports" description="Your local analysis stays in this browser until you save it." />}
       <Modal open={saveOpen} onClose={() => !saving && setSaveOpen(false)} size="sm"><Modal.Header><Modal.Title>Save comparison report</Modal.Title><Modal.Description>Measurements are stored privately with your account.</Modal.Description></Modal.Header><Modal.Body className="space-y-4"><div><Label htmlFor="save-title">Title</Label><Input id="save-title" className="mt-1.5" maxLength={200} value={reportTitle} onChange={(event) => setReportTitle(event.target.value)} /></div><div><Label htmlFor="save-description">Description (optional)</Label><Textarea id="save-description" className="mt-1.5" maxLength={2000} value={reportDescription} onChange={(event) => setReportDescription(event.target.value)} /></div><p className="text-xs text-muted-foreground">{dataset.workloads.length} workloads · threshold {threshold}% · original samples preserved</p></Modal.Body><Modal.Footer><Button variant="ghost" disabled={saving} onClick={() => setSaveOpen(false)}>Cancel</Button><Button data-testid="confirm-save-report" loading={saving} disabled={room.status !== 'connected' || !reports.ready || !reportTitle.trim()} onClick={saveReport}>Save report</Button></Modal.Footer></Modal>
     </div>

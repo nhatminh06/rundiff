@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { analyzeWorkload, bootstrapMedianChange, classifyChange, median, percentile, percentageChange } from './benchmark-stats'
+import { analyzeEvidence, analyzeWorkload, bootstrapMedianChange, classifyChange, classifyEvidence, median, percentile, percentageChange } from './benchmark-stats'
+import { evidenceCacheKey } from './use-benchmark-evidence'
 
 describe('benchmark statistics', () => {
   it('calculates odd and even medians without mutating input', () => {
@@ -49,5 +50,18 @@ describe('benchmark statistics', () => {
 
   it('returns deterministic median results', () => {
     expect(median([5, 1, 4, 2, 3])).toBe(median([3, 5, 2, 1, 4]))
+  })
+
+  it('reclassifies the same evidence at different thresholds without changing the interval', () => {
+    const baseline = [10, 10, 10, 10, 10]
+    const candidate = [11, 11, 11, 11, 11]
+    const evidence = analyzeEvidence(baseline, candidate)
+    expect(evidence.confidenceInterval).toEqual({ lower: 10.000000000000009, upper: 10.000000000000009 })
+    expect(classifyEvidence(evidence, 5)).toEqual(analyzeWorkload(baseline, candidate, { threshold: 5 }))
+    expect(classifyEvidence(evidence, 10).status).toBe('regression')
+    expect(classifyEvidence(evidence, 11).status).toBe('no-clear-regression')
+    expect(evidenceCacheKey(2027, 2000, 5)).not.toBe(evidenceCacheKey(2028, 2000, 5))
+    expect(evidenceCacheKey(2027, 2000, 5)).not.toBe(evidenceCacheKey(2027, 1000, 5))
+    expect(evidenceCacheKey(2027, 2000, 5)).not.toBe(evidenceCacheKey(2027, 2000, 6))
   })
 })

@@ -1,0 +1,86 @@
+name: Manual production release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-checks:
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify reviewed revision and clean checkout
+        run: |
+          test "$GITHUB_REF" = refs/heads/master
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Use supported npm
+        run: npm install --global npm@11.6.0
+      - run: npm ci
+      - run: npm run type-check
+      - run: npm run test:unit
+      - run: npm run lint
+      - run: npm run build
+
+  # Deliberately disabled: DeepSpace 0.44.2 requires a long-lived personal session in CI.
+  # Owner approval and a protected production environment are required before enabling.
+  deploy:
+    if: false
+    needs: release-checks
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify revision and clean checkout
+        run: |
+          test "$GITHUB_REF" = refs/heads/master
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain)"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Use supported npm
+        run: npm install --global npm@11.6.0
+      - run: npm ci
+      - run: npm run type-check
+      - run: npm run test:unit
+      - run: npm run lint
+      - run: npm run build
+      - name: Restore approved DeepSpace session
+        env:
+          DEEPSPACE_SESSION: ${{ secrets.DEEPSPACE_SESSION }}
+        run: |
+          test -n "$DEEPSPACE_SESSION"
+          umask 077
+          mkdir -p "$HOME/.deepspace"
+          printf '%s' "$DEEPSPACE_SESSION" > "$HOME/.deepspace/session"
+      - name: Confirm existing app and GitHub source
+        run: |
+          npx --no-install deepspace app source --json | node -e '
+            let text = "";
+            process.stdin.on("data", chunk => text += chunk);
+            process.stdin.on("end", () => {
+              const result = JSON.parse(text);
+              if (!result.ok || result.appId !== "app_01M7TMX9F6CTP6JW00A80YTTN3" ||
+                  result.source?.provider !== "github" ||
+                  result.source?.repository !== "nhatminh06/rundiff") process.exit(1);
+            });'
+          npx --no-install deepspace status --json | node -e '
+            let text = "";
+            process.stdin.on("data", chunk => text += chunk);
+            process.stdin.on("end", () => {
+              const result = JSON.parse(text);
+              if (!result.ok || result.appId !== "app_01M7TMX9F6CTP6JW00A80YTTN3" ||
+                  result.source?.provider !== "github" ||
+                  result.source?.repository !== "nhatminh06/rundiff") process.exit(1);
+            });'
+      - name: Deploy existing app
+        run: npx --no-install deepspace deploy
