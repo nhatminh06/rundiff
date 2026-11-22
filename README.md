@@ -4,7 +4,7 @@ RunDiff is a developer-focused dashboard for comparing repeated benchmark measur
 
 The application is built with React, TypeScript, and DeepSpace 0.44.2. Demo data is synthetic and clearly labeled. Imported CSV data remains in the browser unless the user explicitly saves a report.
 
-Live application: [rundiff-minh-2027.app.space](https://rundiff-minh-2027.app.space/home). The live release may lag behind this uncommitted M6 work until the owner deploys it.
+Production URL: [rundiff-minh-2027.app.space/home](https://rundiff-minh-2027.app.space/home). Source: [github.com/nhatminh06/rundiff](https://github.com/nhatminh06/rundiff).
 
 ## Screenshots
 
@@ -70,7 +70,7 @@ See the [DeepSpace documentation](https://docs.deep.space/) for the platform mod
 Prerequisites are Node.js 22.15–22.x (or another range accepted by `package.json`), npm 11.6 or newer, and access to the registered DeepSpace app.
 
 ```sh
-npm install
+npm ci
 npx deepspace auth login
 npm run dev
 ```
@@ -90,11 +90,11 @@ npx deepspace test run all --port 5187
 git diff --check
 ```
 
-The authenticated browser suite requires two usable DeepSpace test accounts. Account credentials are managed by the DeepSpace test fixture and must not be placed in source files or command-line arguments. On a machine with the accounts already provisioned, run `npx --no-install deepspace test run all --port 5187` and inspect the passed, failed, and skipped counts. On a fresh machine, use `npx deepspace test accounts list` to check the local pool; see the [DeepSpace testing guide](https://docs.deep.space/guides/testing) for account provisioning and recovery. The `users(2)` fixture needs two usable accounts; its tests may skip without them. CI does not run or claim authenticated browser coverage.
+The latest reported local qualification passed 32 unit tests and 17 browser tests. The browser result is a separate local run, not GitHub Actions coverage. Authenticated browser tests require two usable DeepSpace test accounts; their credentials are managed by the DeepSpace test fixture and must not be placed in source files or command-line arguments. On a machine with the accounts already provisioned, run `npx --no-install deepspace test run all --port 5187` and inspect the passed, failed, and skipped counts. On a fresh machine, use `npx deepspace test accounts list` to check the local pool; see the [DeepSpace testing guide](https://docs.deep.space/guides/testing) for account provisioning and recovery. The `users(2)` fixture may skip tests without two usable accounts.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs on pull requests targeting `master` and pushes to `master`. It uses an Ubuntu runner, Node.js 22, npm 11.6.0, the committed lockfile (`npm ci`), and read-only GitHub permissions. It runs type-check, unit tests, lint, and the production build. It has no DeepSpace credentials and never deploys. A local pass is not evidence that GitHub Actions has run; check the repository's Actions tab for the actual result after the workflows are committed and pushed by the owner.
+`.github/workflows/ci.yml` runs on pull requests targeting `master` and pushes to `master`. It uses an Ubuntu runner, Node.js 22, npm 11.6.0, the committed lockfile (`npm ci`), and read-only GitHub permissions. It runs type-check, unit tests, lint, and the production build. It has no DeepSpace credentials and never deploys. The [hosted CI run for commit `91060d6`](https://github.com/nhatminh06/rundiff/actions/runs/44968310200) completed successfully; authenticated browser tests are not part of that job.
 
 ## CSV input format
 
@@ -147,7 +147,7 @@ Revocation is sent over the active RecordRoom connection. A revoked reviewer los
 
 These intervals describe the supplied samples under independent resampling assumptions. They do not prove causation, correct benchmark bias, or establish that the underlying measurements are independent.
 
-Statistical evidence (medians, p95, change, interval) depends on the original measurements, seed, iteration count, and minimum sample count. RunDiff calculates that evidence once per dataset/options combination in a browser Worker and classifies it again when the threshold changes. Reimporting a file creates a new dataset even if its filename is unchanged. Saved reports recalculate evidence from persisted samples. The original median, percentile, resampling, seed, interval quantile, and strict threshold conventions are unchanged.
+Statistical evidence (medians, p95, change, interval) depends on the original measurements, seed, iteration count, and minimum sample count. RunDiff calculates that evidence once per dataset/options combination in a browser Worker and classifies it again when the threshold changes. Reimporting a file creates a new dataset even if its filename is unchanged. Saved reports recalculate evidence from persisted samples.
 
 ## Export analysis
 
@@ -183,6 +183,7 @@ The script measures parsing, initial analysis, threshold classification, timer d
 - CSV imports and unsaved analyses are temporary browser state.
 - Exported CSV files are local downloads. Opening them in a spreadsheet can interpret cells differently; suspicious text is prefixed to reduce formula execution risk.
 - Reports have no public links, team workspaces, or write-capable reviewer role.
+- There is no GitHub Actions benchmark ingestion or AI-generated benchmark explanation.
 - Browser-test accounts must already exist in the local DeepSpace test pool.
 - The shared React and routing entry remains the largest client asset. Dashboard, reports, DeepSpace, and UI code are split into separate cached chunks; loading cost should be measured on the intended network before further optimization.
 
