@@ -4,7 +4,7 @@ import { Tooltip as TooltipPrimitive } from '@base-ui/react/tooltip'
 import { cn } from '@/lib/utils'
 
 /**
- * One app-level TooltipProvider (mounted in src/pages/_app.tsx) owns the
+ * When tooltips are used, one app-level TooltipProvider should own the
  * shared delay AND Base UI's delay grouping — hovering between nearby
  * triggers switches instantly instead of re-waiting the delay each time.
  * Tooltip deliberately does NOT wrap itself in a provider: a per-Tooltip
