@@ -100,7 +100,7 @@ export default function HomePage() {
       <section aria-label="Comparison summary" className="mb-6 grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-2 lg:grid-cols-4">
         <Summary label="Baseline" value={dataset.baselineLabel} detail={dataset.context} />
         <Summary label="Candidate" value={dataset.candidateLabel} detail={`${rows.length} workloads`} />
-        <Summary label="Regressions" value={String(regressions)} detail={`at ≥ ${threshold}% slower`} tone={regressions ? 'text-destructive' : 'text-success'} />
+        <Summary label="Regressions" value={String(regressions)} detail={`CI lower bound > ${threshold}%`} tone={regressions ? 'text-destructive' : 'text-success'} />
         <Summary label="Investigations" value={String(investigations)} detail="observed change, uncertain CI" tone={investigations ? 'text-warning' : 'text-foreground'} />
       </section>
 

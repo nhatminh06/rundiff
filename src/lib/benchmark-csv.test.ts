@@ -16,6 +16,15 @@ describe('benchmark CSV import', () => {
     expect(result.workloads[0].name).toBe('gemm, "tiny"')
   })
 
+  it.each(['"gemm"x,baseline,2.1', '"gemm" ,baseline,2.1'])(
+    'rejects characters after a closing quote in %j',
+    (row) => {
+      expect(() => importBenchmarkCsv(`${header}${row}\ngemm,candidate,2.4`, 'bad.csv')).toThrow(
+        'Row 2: Unexpected character after closing quote.',
+      )
+    },
+  )
+
   it('rejects missing and malformed headers', () => {
     expect(() => importBenchmarkCsv('', 'empty.csv')).toThrow('empty')
     expect(() => importBenchmarkCsv('workload,latency_ms\ngemm,2', 'bad.csv')).toThrow('Row 1')

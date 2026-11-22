@@ -35,13 +35,14 @@ export function importBenchmarkCsv(text: string, fileName: string, byteSize = ne
 }
 
 function parseCsv(text: string): string[][] {
-  const rows: string[][] = []; let row: string[] = []; let field = ''; let quoted = false
+  const rows: string[][] = []; let row: string[] = []; let field = ''; let quoted = false; let closedQuote = false
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index]
-    if (quoted) { if (char === '"' && text[index + 1] === '"') { field += '"'; index += 1 } else if (char === '"') quoted = false; else field += char }
+    if (quoted) { if (char === '"' && text[index + 1] === '"') { field += '"'; index += 1 } else if (char === '"') { quoted = false; closedQuote = true } else field += char }
+    else if (closedQuote && char !== ',' && char !== '\n' && char !== '\r') throw new CsvImportError('Unexpected character after closing quote.', rows.length + 1)
     else if (char === '"' && field === '') quoted = true
-    else if (char === ',') { row.push(field); field = '' }
-    else if (char === '\n' || char === '\r') { if (char === '\r' && text[index + 1] === '\n') index += 1; row.push(field); field = ''; if (row.some((value) => value !== '')) rows.push(row); row = [] }
+    else if (char === ',') { row.push(field); field = ''; closedQuote = false }
+    else if (char === '\n' || char === '\r') { if (char === '\r' && text[index + 1] === '\n') index += 1; row.push(field); field = ''; closedQuote = false; if (row.some((value) => value !== '')) rows.push(row); row = [] }
     else field += char
   }
   if (quoted) throw new CsvImportError('Unclosed quoted field.', rows.length + 1)

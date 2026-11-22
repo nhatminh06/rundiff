@@ -32,6 +32,10 @@ import type { ExpoAuthBridgeOptions, JwtVerifierConfig, VerifyResult } from 'dee
 import { integrations } from '../integrations.js'
 import type { AppContext, Env } from '../../worker.js'
 
+// RunDiff currently uses no paid catalog endpoints. Add exact "name/endpoint"
+// entries here only when a product feature intentionally adopts one.
+const allowedIntegrationEndpoints: ReadonlySet<string> = new Set()
+
 function jwtConfig(env: Env): JwtVerifierConfig {
   return { publicKey: env.AUTH_JWT_PUBLIC_KEY, issuer: env.AUTH_JWT_ISSUER }
 }
@@ -236,7 +240,10 @@ export function registerAuthAndIntegrationRoutes(app: Hono<AppContext>): void {
     // reach another api-worker route with the owner's token. Plain
     // identifiers only, and own keys only for the config.
     const target = integrationPath(integrationName, c.req.param('endpoint'))
-    if (!target) return c.json({ error: 'Unknown integration' }, 404)
+    const endpoint = `${integrationName}/${c.req.param('endpoint')}`
+    if (!target || !allowedIntegrationEndpoints.has(endpoint)) {
+      return c.json({ error: 'Unsupported integration' }, 404)
+    }
     const config = lookupOwn(integrations, integrationName)
     const billingMode = config?.billing ?? 'developer'
 
